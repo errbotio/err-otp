@@ -1,0 +1,9 @@
+[Core]
+Name = OTP
+Module = otp
+
+[Documentation]
+Description = This adds OTP feature to errbot.
+
+[Python]
+Version = 3
