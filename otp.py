@@ -8,20 +8,31 @@ import pyotp
 
 from errbot import BotPlugin, botcmd, cmdfilter
 
-OTP_EXPIRATION = datetime.timedelta(days=1)  # People have to enter an OTP once a day.
-OTP_MAX_NB_FAILS = 10  # if a user fails 10 times at OTP'ing, burn his/her secret.
+# People have to enter an OTP once a day.
+OTP_EXPIRATION = datetime.timedelta(days=1)
+
+# if a user fails 10 times at OTP'ing, burn his/her secret
+OTP_MAX_NB_FAILS = 10
 BEGINNING_OF_TIMES = datetime.datetime(year=datetime.MINYEAR, month=1, day=1)
+
 def ident(msg):
-    if hasattr(msg.frm, 'aclattr'):  # if the identity requires a special field to be used for acl
-        return msg.frm.aclattr
-    return msg.frm.person  # default
+    """ Retreive the relevant identity for OTP from the given message."""
+    # if the identity requires a special field to be used for acl
+    return msg.frm.aclattr if hasattr(msg.frm, 'aclattr') else msg.frm.person
+
+def makeQRCode(data, mode):
+    """ Make a graphical representation of a QRCODE in unicode."""
+    sio = StringIO()
+    qr_code = QRCode()
+    qr_code.add_data(data)
+    qr_code.print_ascii(out=sio, invert=mode == 'text')
+    return '\n'.join(line.lstrip() for line in sio.getvalue().split('\n'))
+
 
 def makeQRCodeMessage(data, mode):
-    sio = StringIO()
-    qr = QRCode()
-    qr.add_data(data)
-    qr.print_ascii(out=sio, invert=mode == 'text')
-    return '```\n' + '\n'.join(line.lstrip() for line in sio.getvalue().split('\n')) + '\n```\nContent: %s' % data
+    """ Make a chat message with a QRCode in it."""
+    return '```\n' + makeQRCode(data, mode) + '\n```\ncontent: %s' % data
+
 
 class OTP(BotPlugin):
     """ This implements One Time Passwords for Errbot.
@@ -51,6 +62,7 @@ class OTP(BotPlugin):
 
     @botcmd(admin_only=True)
     def otp_zapall(self, msg, args):
+        """ DANGER: Removes all the OTP entries. """
         self['cmds'] = set()
         self['secrets'] = {}
 
@@ -64,7 +76,7 @@ class OTP(BotPlugin):
 
     @botcmd(admin_only=True)
     def otp_delcmd(self, msg, args):
-        """Authorize a command with no OTP."""
+        """Authorize a command with no OTP. (reverse from addcmd)."""
         with self.lock:
             with self.stored('cmds') as cmds:
                 if args not in cmds:
@@ -74,7 +86,7 @@ class OTP(BotPlugin):
 
     @botcmd(admin_only=True)
     def otp_cmds(self, msg, args):
-        """List commands requiring OTPs."""
+        """List the current commands requiring OTPs."""
         return "Commands with mandatory OTP:\n" + '\n'.join(self['cmds'])
 
     @botcmd(admin_only=True)
@@ -96,6 +108,7 @@ class OTP(BotPlugin):
         return self.otp_secret(msg, args)
 
     def callback_message(self, msg):
+        """Check the messages if it received an OTP confirming a command."""
         if msg.type == 'groupchat':
             return
         try:
@@ -132,6 +145,7 @@ class OTP(BotPlugin):
 
     @cmdfilter
     def otpfilter(self, msg, cmd, args, dry_run):
+        """ This is where the actual filtering is done."""
         self.log.info("You are trying to call %s with %s" % (cmd, args))
         with self.lock:
             if cmd in self['cmds']:
